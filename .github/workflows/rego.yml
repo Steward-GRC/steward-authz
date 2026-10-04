@@ -1,6 +1,7 @@
 name: rego
-# The Rego bundles this repo owns: format, strict compile, unit tests, a bundle
-# build, and the publish script's tests. Publishing itself is not wired here.
+# The Rego bundles this repo owns: format, strict compile, unit tests, and the
+# bundle build each service's image runs. There is no bundle store and no
+# publish step: services build the bundle into their images.
 on:
   pull_request:
     branches:
@@ -28,7 +29,7 @@ jobs:
         run: opa check --strict policies
       - name: opa test
         run: opa test --verbose policies
-      - name: opa build
-        run: opa build --bundle policies --ignore '*_test.rego' --revision "$GITHUB_SHA" --output bundle.tar.gz
-      - name: Publish script tests
-        run: bash scripts/publish-bundle_test.sh
+      - name: Bundle build and its tests
+        run: |
+          BUNDLE_REVISION="$GITHUB_SHA" sh scripts/build-bundle.sh bundle.tar.gz
+          sh scripts/build-bundle_test.sh

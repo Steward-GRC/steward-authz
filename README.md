@@ -34,7 +34,7 @@ if err := d.Err(); err != nil { return err } // coded AUTHZ_DENIED
 
 - [The access model](docs/access-model.md): the rule engine and `Authorize`, step by step.
 - [The permission catalog](docs/catalog.md): permissions, roles, error codes.
-- [The Rego bundles](docs/rego-bundles.md): the input shape, testing, building and publishing.
+- [The Rego bundles](docs/rego-bundles.md): the input shape, testing, and building the bundle into a service image.
 
 ## 🛠 Develop
 
@@ -43,8 +43,8 @@ task build       # go build ./...
 task test        # go test ./...
 task lint        # gofmt check + golangci-lint + yamllint
 task license     # check Apache-2.0 headers (golic)
-task rego:test   # opa fmt, opa check, opa test, and the publish script's tests
-task rego:bundle # build bundle.tar.gz from policies/
+task rego:test   # opa fmt, opa check, opa test, and the bundle build's tests
+task rego:bundle # build bundle.tar.gz from policies/ (scripts/build-bundle.sh)
 ```
 
 ## ⚖️ License

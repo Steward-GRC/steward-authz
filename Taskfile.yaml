@@ -28,16 +28,16 @@ tasks:
     cmds:
       - go test ./... -cover
   rego:test:
-    desc: Check and test the Rego bundles (opa fmt, opa check, opa test) and the publish script
+    desc: Check and test the Rego bundles (opa fmt, opa check, opa test) and the bundle build
     cmds:
       - opa fmt --fail --list policies
       - opa check --strict policies
       - opa test policies
-      - bash scripts/publish-bundle_test.sh
+      - sh scripts/build-bundle_test.sh
   rego:bundle:
     desc: Build the OPA bundle (bundle.tar.gz) from policies/, without the tests
     cmds:
-      - opa build --bundle policies --ignore '*_test.rego' --revision "$(git rev-parse HEAD)" --output bundle.tar.gz
+      - sh scripts/build-bundle.sh bundle.tar.gz
   lint:
     desc: Run all linters
     deps: [test]
