@@ -103,7 +103,9 @@ func ParseRole(s string) (Role, error) {
 
 // grants is the role-to-permission table as a responsibility matrix: the
 // subject dimension is the role. Site admin holds a wildcard, so a permission
-// added to the catalog later is covered without touching this table.
+// added to the catalog later is covered without touching this table. No role
+// ever grants policy.read_sensitive: it is an individual grant only, so its
+// cell is denied ahead of the wildcard.
 var grants = func() *goauthz.Matrix {
 	m := goauthz.NewMatrix("catalog")
 	table := map[Role][]Permission{
@@ -111,7 +113,7 @@ var grants = func() *goauthz.Matrix {
 		RoleAuthor:          {PolicyRead, PolicyAuthor, PolicySubmit},
 		RoleApprover:        {PolicyRead, PolicyApprove},
 		RoleTemplateAdmin:   {PolicyRead, TemplateManage, WorkflowManage},
-		RoleComplianceAdmin: {PolicyRead, PolicyReadSensitive, ComplianceManage, ComplianceReport, AuditRead},
+		RoleComplianceAdmin: {PolicyRead, ComplianceManage, ComplianceReport, AuditRead},
 	}
 	for role, perms := range table {
 		for _, p := range perms {
@@ -119,6 +121,7 @@ var grants = func() *goauthz.Matrix {
 		}
 	}
 	m.Allow(string(RoleSiteAdmin), goauthz.Wildcard, goauthz.Wildcard)
+	m.Deny(goauthz.Wildcard, PolicyReadSensitive.Resource(), PolicyReadSensitive.Verb())
 	return m
 }()
 

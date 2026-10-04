@@ -100,22 +100,34 @@ is_approver(claims) if {
 	claims.scoped_roles[i].role == "approver"
 }
 
-# can_access_sensitive is true for any caller holding an elevated role, never
-# for the implicit reader.
-can_access_sensitive(claims) if {
-	is_site_admin(claims)
+# A sensitive policy is read only by the authors and approvers assigned to
+# it, and by explicit grants: the individual read-sensitive grant
+# (claims.read_sensitive) or a grant on that one policy
+# (claims.sensitive_grants holds policy IDs). No role reads it.
+#
+# policy is {"id": ..., "assigned_author_ids": [...], "assigned_approver_ids": [...]}.
+can_read_sensitive(claims, policy) if {
+	has_user_id(claims)
+	claims.user_id in policy.assigned_author_ids
 }
 
-can_access_sensitive(claims) if {
-	is_compliance_admin(claims)
+can_read_sensitive(claims, policy) if {
+	has_user_id(claims)
+	claims.user_id in policy.assigned_approver_ids
 }
 
-can_access_sensitive(claims) if {
-	is_author(claims)
+can_read_sensitive(claims, policy) if {
+	policy.id in claims.sensitive_grants
 }
 
-can_access_sensitive(claims) if {
-	is_approver(claims)
+can_read_sensitive(claims, _) if {
+	has_sensitive_grant(claims)
+}
+
+# has_sensitive_grant is the individual read-sensitive grant, the only way to
+# read sensitive content across policies.
+has_sensitive_grant(claims) if {
+	claims.read_sensitive == true
 }
 
 # has_user_id returns true when the caller has a non-empty subject. Every

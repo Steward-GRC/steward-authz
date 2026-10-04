@@ -6,7 +6,7 @@ Permissions are written `<resource>.<verb>`. `Permissions()` lists them in a sta
 | Permission | Scoped | Means |
 |---|---|---|
 | `policy.read` | | read documents (every signed-in subject) |
-| `policy.read_sensitive` | | read documents marked sensitive |
+| `policy.read_sensitive` | | read every sensitive document; an individual grant only, never held by a role |
 | `policy.author` | yes | create and edit drafts |
 | `policy.submit` | yes | submit a draft for approval |
 | `policy.approve` | yes | decide on a draft in a workflow |
@@ -33,15 +33,18 @@ everything below them (see [the access model](access-model.md)).
 | `author` | `policy.read`, `policy.author`, `policy.submit` |
 | `approver` | `policy.read`, `policy.approve` |
 | `template-admin` | `policy.read`, `template.manage`, `workflow.manage` |
-| `compliance-admin` | `policy.read`, `policy.read_sensitive`, `compliance.manage`, `compliance.report`, `audit.read` |
-| `site-admin` | everything, including permissions added to the catalog later |
+| `compliance-admin` | `policy.read`, `compliance.manage`, `compliance.report`, `audit.read` |
+| `site-admin` | everything but `policy.read_sensitive`, including permissions added to the catalog later |
+
+No role grants `policy.read_sensitive`: a sensitive document is read only by the authors and
+approvers assigned to it and by explicit grants (see [the access model](access-model.md#sensitive-documents)).
 
 There is no `admin` role. An unknown role grants nothing beyond the reader baseline, and
 `ParseRole` refuses it.
 
 The role table is a responsibility matrix from `github.com/Bugs5382/go-authz`, with the role as the
 subject, the permission's resource and verb as the other two dimensions, and a wildcard cell for
-site admin.
+site admin, and a deny cell for `policy.read_sensitive` that every role hits first.
 
 ## Error codes
 

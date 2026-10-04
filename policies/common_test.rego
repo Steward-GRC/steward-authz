@@ -143,39 +143,66 @@ test_is_approver_denied_reader if {
 	not is_approver({"roles": ["reader"], "scoped_roles": []})
 }
 
-# --- can_access_sensitive -------------------------------------------------
+# --- sensitive reads ------------------------------------------------------
+# A sensitive policy is read only by the authors and approvers assigned to
+# it, and by explicit grants. No role reads it.
 
-test_can_access_sensitive_admin_role_denied if {
-	not can_access_sensitive({"roles": ["admin"]})
+sensitive_policy := {
+	"id": "POL-EXPENSES-000002",
+	"assigned_author_ids": ["bob"],
+	"assigned_approver_ids": ["carol"],
 }
 
-test_can_access_sensitive_site_admin if {
-	can_access_sensitive({"roles": ["site-admin"]})
+test_can_read_sensitive_assigned_author if {
+	can_read_sensitive({"user_id": "bob", "roles": ["author"]}, sensitive_policy)
 }
 
-test_can_access_sensitive_compliance_admin if {
-	can_access_sensitive({"roles": ["compliance-admin"]})
+test_can_read_sensitive_assigned_approver if {
+	can_read_sensitive({"user_id": "carol", "roles": ["approver"]}, sensitive_policy)
 }
 
-test_can_access_sensitive_author if {
-	can_access_sensitive({"roles": ["author"]})
+test_can_read_sensitive_unassigned_author_denied if {
+	not can_read_sensitive(
+		{"user_id": "dave", "roles": ["author"], "scoped_roles": [{"role": "author", "category": "Finance"}]},
+		sensitive_policy,
+	)
 }
 
-test_can_access_sensitive_approver if {
-	can_access_sensitive({"roles": ["approver"]})
+test_can_read_sensitive_unassigned_approver_denied if {
+	not can_read_sensitive(
+		{"user_id": "heidi", "roles": ["approver"], "scoped_roles": [{"role": "approver", "category": "Finance"}]},
+		sensitive_policy,
+	)
 }
 
-test_can_access_sensitive_scoped_author if {
-	# Scoped author (no global role) is elevated.
-	can_access_sensitive({"roles": [], "scoped_roles": [{"role": "author", "category": "Information"}]})
+test_can_read_sensitive_individual_grant if {
+	can_read_sensitive({"user_id": "frank", "roles": [], "read_sensitive": true}, sensitive_policy)
 }
 
-test_can_access_sensitive_denied_empty_roles if {
-	not can_access_sensitive({"roles": []})
+test_can_read_sensitive_policy_grant if {
+	can_read_sensitive({"user_id": "frank", "roles": [], "sensitive_grants": ["POL-EXPENSES-000002"]}, sensitive_policy)
 }
 
-test_can_access_sensitive_denied_reader if {
-	not can_access_sensitive({"roles": ["reader"], "scoped_roles": []})
+test_can_read_sensitive_other_policy_grant_denied if {
+	not can_read_sensitive({"user_id": "frank", "roles": [], "sensitive_grants": ["POL-FACILITIES-000004"]}, sensitive_policy)
+}
+
+test_can_read_sensitive_roles_denied if {
+	not can_read_sensitive({"user_id": "grace", "roles": ["compliance-admin"]}, sensitive_policy)
+	not can_read_sensitive({"user_id": "alice", "roles": ["site-admin"]}, sensitive_policy)
+	not can_read_sensitive({"user_id": "erin", "roles": ["reader"]}, sensitive_policy)
+	not can_read_sensitive({"user_id": "ops", "roles": ["admin"]}, sensitive_policy)
+}
+
+test_can_read_sensitive_empty_user_id_denied if {
+	not can_read_sensitive({"user_id": "", "roles": []}, {"id": "p", "assigned_author_ids": [""], "assigned_approver_ids": []})
+}
+
+test_has_sensitive_grant if {
+	has_sensitive_grant({"user_id": "frank", "read_sensitive": true})
+	not has_sensitive_grant({"user_id": "frank", "read_sensitive": false})
+	not has_sensitive_grant({"user_id": "grace", "roles": ["compliance-admin"]})
+	not has_sensitive_grant({"user_id": "bob", "roles": ["author"]})
 }
 
 # --- has_user_id ----------------------------------------------------------

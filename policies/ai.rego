@@ -6,7 +6,8 @@
 #   (a) the caller's claims.groups is a SUPERSET of authorized_group_ids,
 #       i.e. every group_id in authorized_group_ids must be in
 #       claims.groups; the gateway cannot widen the set.
-#   (b) include_sensitive=true requires the sensitive role.
+#   (b) include_sensitive=true requires the individual read-sensitive
+#       grant; no role reads sensitive content across policies.
 package steward.ai # scrub:allow=fqdn
 
 import data.steward.common
@@ -36,7 +37,8 @@ group_in_claims(gid) if {
 # Base allow: authenticated caller, requester field matches user_id, the
 # authorized_group_ids the caller submitted are all groups they actually
 # belong to, and (when sensitive content is included) they hold the
-# sensitive-content role.
+# individual read-sensitive grant. The AI service still filters each
+# sensitive document to its assigned authors and approvers.
 allow if {
 	input.method == "steward.ai.v1.AiService/SearchAndAnswer"
 	common.has_user_id(input.claims)
@@ -51,7 +53,7 @@ allow if {
 	input.claims.user_id == input.request.actor_user_id
 	authorized_groups_subset_of_claims
 	input.request.include_sensitive == true
-	common.can_access_sensitive(input.claims)
+	common.has_sensitive_grant(input.claims)
 }
 
 not_sensitive_request if {

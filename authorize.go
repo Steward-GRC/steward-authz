@@ -34,6 +34,7 @@ const (
 	ReasonBreakGlass        Reason = "break_glass"
 	ReasonExcluded          Reason = "excluded"
 	ReasonSensitive         Reason = "sensitive"
+	ReasonAssigned          Reason = "assigned"
 )
 
 // ScopedGrant gives a role inside one category and, through the category
@@ -105,6 +106,11 @@ type Resource struct {
 	// to the root. When it is empty, Category alone is used.
 	CategoryLineage []string
 	Sensitive       bool
+	// Authors and Approvers are the user IDs assigned to this document. On a
+	// sensitive document they are the only subjects, besides explicit grants,
+	// who may read it.
+	Authors   []string
+	Approvers []string
 }
 
 // Decision is the outcome of Authorize.
@@ -144,7 +150,9 @@ func HasCapability(s Subject, p Permission) bool {
 }
 
 // Authorize decides p for the subject on r. r is nil for an action that is not
-// aimed at one resource.
+// aimed at one resource. A sensitive document is read only by its assigned
+// authors and approvers and by explicit grants (the individual read-sensitive
+// grant, an override allow, break glass); no role reads it.
 func Authorize(s Subject, p Permission, r *Resource) Decision {
 	if !HasCapability(s, p) {
 		return Decision{EffectDeny, ReasonMissingCapability}
@@ -177,7 +185,10 @@ func Authorize(s Subject, p Permission, r *Resource) Decision {
 	if s.BreakGlass[r.ID] {
 		return Decision{EffectAllow, ReasonBreakGlass}
 	}
-	if r.Sensitive && !s.ReadSensitive && !s.holds(PolicyReadSensitive) {
+	if r.Sensitive && !s.ReadSensitive {
+		if s.UserID != "" && (slices.Contains(r.Authors, s.UserID) || slices.Contains(r.Approvers, s.UserID)) {
+			return Decision{EffectAllow, ReasonAssigned}
+		}
 		return Decision{EffectDeny, ReasonSensitive}
 	}
 	return Decision{EffectAllow, ReasonGranted}

@@ -53,9 +53,9 @@ test_search_sensitive_requires_sensitive_role if {
 	}
 }
 
-test_search_sensitive_allowed_with_elevated_role if {
-	# Elevated role (author) grants sensitive access under the new model.
-	allow with input as {
+test_search_sensitive_author_role_denied if {
+	# No role reads sensitive content across policies.
+	not allow with input as {
 		"method": "steward.ai.v1.AiService/SearchAndAnswer",
 		"claims": {"user_id": "u1", "roles": ["author"], "groups": ["g1"]},
 		"request": {
@@ -67,7 +67,7 @@ test_search_sensitive_allowed_with_elevated_role if {
 }
 
 test_search_sensitive_denied_empty_roles if {
-	# No elevated role — plain reader (empty roles) must be denied.
+	# No grant — a plain reader (empty roles) must be denied.
 	not allow with input as {
 		"method": "steward.ai.v1.AiService/SearchAndAnswer",
 		"claims": {"user_id": "u1", "roles": [], "groups": ["g1"]},
@@ -140,5 +140,29 @@ test_unknown_method_denied if {
 		"method": "steward.ai.v1.AiService/NotARpc",
 		"claims": {"user_id": "ops", "roles": ["admin"]},
 		"request": {},
+	}
+}
+
+test_search_sensitive_allowed_with_explicit_grant if {
+	allow with input as {
+		"method": "steward.ai.v1.AiService/SearchAndAnswer",
+		"claims": {"user_id": "u1", "roles": [], "groups": ["g1"], "read_sensitive": true},
+		"request": {
+			"actor_user_id": "u1",
+			"authorized_group_ids": ["g1"],
+			"include_sensitive": true,
+		},
+	}
+}
+
+test_search_sensitive_compliance_admin_denied if {
+	not allow with input as {
+		"method": "steward.ai.v1.AiService/SearchAndAnswer",
+		"claims": {"user_id": "u1", "roles": ["compliance-admin"], "groups": ["g1"]},
+		"request": {
+			"actor_user_id": "u1",
+			"authorized_group_ids": ["g1"],
+			"include_sensitive": true,
+		},
 	}
 }

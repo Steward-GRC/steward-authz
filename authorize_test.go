@@ -134,9 +134,6 @@ func TestAuthorize_Visibility(t *testing.T) {
 	if d := authz.Authorize(authz.Subject{Roles: []authz.Role{authz.RoleReader}, ReadSensitive: true}, authz.PolicyRead, sens); d.Effect != authz.EffectAllow {
 		t.Fatalf("sensitive with the individual grant: %+v", d)
 	}
-	if d := authz.Authorize(withRoles(authz.RoleComplianceAdmin), authz.PolicyRead, sens); d.Effect != authz.EffectAllow {
-		t.Fatalf("sensitive with a role that holds read_sensitive: %+v", d)
-	}
 
 	ov := authz.Subject{Roles: []authz.Role{authz.RoleReader}, Overrides: []authz.Override{{ResourceID: "POL-EXPENSES-000002", Grant: authz.GrantAllow}}}
 	if d := authz.Authorize(ov, authz.PolicyRead, sens); d.Effect != authz.EffectAllow || d.Reason != authz.ReasonOverrideAllow {
@@ -166,5 +163,44 @@ func TestDecision_Err(t *testing.T) {
 	}
 	if md := apperr.Metadata(err); len(md) != 0 {
 		t.Fatalf("a denial must not send its reason to the client, got %v", md)
+	}
+}
+
+func TestAuthorize_SensitiveReadIsAssignmentOrExplicitGrantOnly(t *testing.T) {
+	doc := &authz.Resource{
+		ID: "POL-EXPENSES-000002", Category: "Expenses", CategoryLineage: []string{"Expenses", "Finance"},
+		Sensitive: true, Authors: []string{"bob"}, Approvers: []string{"carol"},
+	}
+	scopedAuthor := func(id string) authz.Subject {
+		return authz.Subject{UserID: id, Roles: []authz.Role{authz.RoleAuthor}, ScopedGrants: []authz.ScopedGrant{{Role: authz.RoleAuthor, Category: "Finance"}}}
+	}
+	scopedApprover := func(id string) authz.Subject {
+		return authz.Subject{UserID: id, Roles: []authz.Role{authz.RoleApprover}, ScopedGrants: []authz.ScopedGrant{{Role: authz.RoleApprover, Category: "Finance"}}}
+	}
+	cases := []struct {
+		name   string
+		s      authz.Subject
+		effect authz.Effect
+		reason authz.Reason
+	}{
+		{"the assigned author", scopedAuthor("bob"), authz.EffectAllow, authz.ReasonAssigned},
+		{"the assigned approver", scopedApprover("carol"), authz.EffectAllow, authz.ReasonAssigned},
+		{"an assigned author with no role", authz.Subject{UserID: "bob"}, authz.EffectAllow, authz.ReasonAssigned},
+		{"an unassigned author of the category", scopedAuthor("dave"), authz.EffectDeny, authz.ReasonSensitive},
+		{"an unassigned approver of the category", scopedApprover("heidi"), authz.EffectDeny, authz.ReasonSensitive},
+		{"the individual read_sensitive grant", authz.Subject{UserID: "frank", ReadSensitive: true}, authz.EffectAllow, authz.ReasonGranted},
+		{"an override allow on this document", authz.Subject{UserID: "frank", Overrides: []authz.Override{{ResourceID: "POL-EXPENSES-000002", Grant: authz.GrantAllow}}}, authz.EffectAllow, authz.ReasonOverrideAllow},
+		{"a break-glass grant on this document", authz.Subject{UserID: "frank", BreakGlass: map[string]bool{"POL-EXPENSES-000002": true}}, authz.EffectAllow, authz.ReasonBreakGlass},
+		{"a compliance admin", authz.Subject{UserID: "grace", Roles: []authz.Role{authz.RoleComplianceAdmin}}, authz.EffectDeny, authz.ReasonSensitive},
+		{"a site admin", authz.Subject{UserID: "alice", Roles: []authz.Role{authz.RoleSiteAdmin}}, authz.EffectDeny, authz.ReasonSensitive},
+		{"a reader", authz.Subject{UserID: "erin"}, authz.EffectDeny, authz.ReasonSensitive},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := authz.Authorize(c.s, authz.PolicyRead, doc)
+			if d.Effect != c.effect || d.Reason != c.reason {
+				t.Fatalf("got %+v, want %s/%s", d, c.effect, c.reason)
+			}
+		})
 	}
 }

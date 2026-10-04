@@ -74,25 +74,114 @@ test_create_magic_link_nonsensitive_reader_denied if {
 	}
 }
 
-test_create_magic_link_sensitive_compliance_admin if {
+test_create_magic_link_sensitive_assigned_author if {
 	allow with input as {
 		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
-		"claims": {"user_id": "u1", "roles": ["compliance-admin"]},
+		"claims": {"user_id": "bob", "roles": ["author"]},
 		"request": {
-			"created_by_user_id": "u1",
+			"created_by_user_id": "bob",
 			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
 		},
 	}
 }
 
-test_create_magic_link_sensitive_author_denied if {
-	# Plain author cannot mint a sensitive magic link.
+test_create_magic_link_sensitive_assigned_approver if {
+	allow with input as {
+		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
+		"claims": {"user_id": "carol", "roles": ["approver"]},
+		"request": {
+			"created_by_user_id": "carol",
+			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
+		},
+	}
+}
+
+test_create_magic_link_sensitive_explicit_grant if {
+	allow with input as {
+		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
+		"claims": {"user_id": "frank", "roles": [], "sensitive_grants": ["POL-EXPENSES-000002"]},
+		"request": {
+			"created_by_user_id": "frank",
+			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
+		},
+	}
+}
+
+test_create_magic_link_sensitive_unassigned_author_denied if {
 	not allow with input as {
 		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
-		"claims": {"user_id": "u1", "roles": ["author"]},
+		"claims": {"user_id": "dave", "roles": ["author"]},
 		"request": {
-			"created_by_user_id": "u1",
+			"created_by_user_id": "dave",
 			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
+		},
+	}
+}
+
+test_create_magic_link_sensitive_unassigned_approver_denied if {
+	not allow with input as {
+		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
+		"claims": {"user_id": "heidi", "roles": ["approver"]},
+		"request": {
+			"created_by_user_id": "heidi",
+			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
+		},
+	}
+}
+
+test_create_magic_link_sensitive_compliance_admin_denied if {
+	not allow with input as {
+		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
+		"claims": {"user_id": "grace", "roles": ["compliance-admin"]},
+		"request": {
+			"created_by_user_id": "grace",
+			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
+		},
+	}
+}
+
+test_create_magic_link_sensitive_site_admin_denied if {
+	not allow with input as {
+		"method": "steward.delivery.v1.DeliveryService/CreateMagicLink",
+		"claims": {"user_id": "alice", "roles": ["site-admin"]},
+		"request": {
+			"created_by_user_id": "alice",
+			"sensitive": true,
+			"policy": {
+				"id": "POL-EXPENSES-000002",
+				"assigned_author_ids": ["bob"],
+				"assigned_approver_ids": ["carol"],
+			},
 		},
 	}
 }

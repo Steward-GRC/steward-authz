@@ -23,7 +23,7 @@ func TestRolePermissions(t *testing.T) {
 		{authz.RoleApprover, []authz.Permission{authz.PolicyRead, authz.PolicyApprove}},
 		{authz.RoleTemplateAdmin, []authz.Permission{authz.PolicyRead, authz.TemplateManage, authz.WorkflowManage}},
 		{authz.RoleComplianceAdmin, []authz.Permission{
-			authz.PolicyRead, authz.PolicyReadSensitive, authz.ComplianceManage, authz.ComplianceReport, authz.AuditRead,
+			authz.PolicyRead, authz.ComplianceManage, authz.ComplianceReport, authz.AuditRead,
 		}},
 	}
 	for _, c := range cases {
@@ -38,9 +38,12 @@ func TestRolePermissions(t *testing.T) {
 	}
 }
 
-func TestRolePermissions_SiteAdminHoldsTheWholeCatalog(t *testing.T) {
+func TestRolePermissions_SiteAdminHoldsTheCatalogButReadSensitive(t *testing.T) {
 	got := authz.RolePermissions(authz.RoleSiteAdmin)
 	for _, p := range authz.Permissions() {
+		if p == authz.PolicyReadSensitive {
+			continue
+		}
 		if !slices.Contains(got, p) {
 			t.Errorf("site-admin missing %q", p)
 		}
@@ -66,8 +69,8 @@ func TestRolePermissions_Snapshot(t *testing.T) {
 		authz.RoleAuthor:          3,
 		authz.RoleApprover:        2,
 		authz.RoleTemplateAdmin:   3,
-		authz.RoleComplianceAdmin: 5,
-		authz.RoleSiteAdmin:       len(authz.Permissions()),
+		authz.RoleComplianceAdmin: 4,
+		authz.RoleSiteAdmin:       len(authz.Permissions()) - 1,
 	}
 	for role, n := range want {
 		if got := len(authz.RolePermissions(role)); got != n {
@@ -145,5 +148,16 @@ func TestParseRole(t *testing.T) {
 	}
 	if code, ok := apperr.Code(err); !ok || code != authz.CodeUnknownRole {
 		t.Fatalf("want code %d, got %d (%v)", authz.CodeUnknownRole, code, ok)
+	}
+}
+
+func TestNoRoleGrantsReadSensitive(t *testing.T) {
+	for _, r := range authz.Roles() {
+		if slices.Contains(authz.RolePermissions(r), authz.PolicyReadSensitive) {
+			t.Errorf("role %q grants policy.read_sensitive; it is an individual grant only", r)
+		}
+		if authz.HasCapability(authz.Subject{Roles: []authz.Role{r}}, authz.PolicyReadSensitive) {
+			t.Errorf("role %q holds the read_sensitive capability", r)
+		}
 	}
 }

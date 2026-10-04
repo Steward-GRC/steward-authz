@@ -10,7 +10,8 @@ grants, per-document overrides, the individual read-sensitive grant, whether the
 active break-glass grants. Every signed-in subject is a reader; the reader role is never stored.
 
 A `Resource` is one document: its ID (for example `POL-FACILITIES-000001`), its category, the
-category lineage from that category up to the root, and whether it is sensitive.
+category lineage from that category up to the root, whether it is sensitive, and the user IDs of
+the authors and approvers assigned to it.
 
 ## Category rules
 
@@ -69,7 +70,20 @@ and the problem as wire metadata.
 3. **Other permissions** are granted by the capability alone.
 4. **Read of a document:** an override allow shows it; an override deny excludes it (a site admin
    still sees that it exists: `obfuscate`); an active break-glass grant shows it; a sensitive
-   document needs `policy.read_sensitive`.
+   document follows the rule below.
+
+### Sensitive documents
+
+A sensitive document is read only by:
+
+- the authors and approvers assigned to that document (`Resource.Authors`, `Resource.Approvers`):
+  reason `assigned`;
+- explicit grants: the individual read-sensitive grant (`Subject.ReadSensitive`), an override
+  allow on that document, or an active break-glass grant on it.
+
+Everyone else is denied (`sensitive`): an author or approver of the category who isn't assigned to
+the document, a compliance admin, a site admin, a reader. No role grants `policy.read_sensitive`.
+The Rego bundles apply the same rule (`steward.common.can_read_sensitive`).
 
 `HasCapability` is the coarse check from step 1, for work that spans categories (a bulk decision,
 say); the service still calls `Authorize` per resource.

@@ -56,13 +56,14 @@ allow if {
 	common.is_approver(input.claims)
 }
 
-# Sensitive magic links: only compliance-admins.
+# Sensitive magic links: only someone who may read that policy: its assigned
+# authors and approvers, or an explicit grant.
 allow if {
 	input.method == "steward.delivery.v1.DeliveryService/CreateMagicLink"
 	input.request.sensitive == true
 	common.has_user_id(input.claims)
 	input.claims.user_id == input.request.created_by_user_id
-	common.is_compliance_admin(input.claims)
+	common.can_read_sensitive(input.claims, input.request.policy)
 }
 
 # Revocation: any authenticated user can revoke a link they created. We do not have the link's creator in input
