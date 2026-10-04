@@ -5,36 +5,38 @@ hook-enforced rules). Keep this file current when the build, layout, or public A
 
 ## What this is
 
-Access-rule engine and permission catalog shared by Steward services
+Access-rule engine and permission catalog shared by Steward services: a Go library with no I/O,
+imported by every service that decides access in-process, plus the Rego bundles in `policies/`.
 
-<!-- Fill in: what the project does, what it ships (library, service, action, CLI), and the one or
-two things an agent must understand before changing it. -->
+- Every decision fails closed: default deny, first match wins. Never add a path that allows by
+  default.
+- The catalog and role table are snapshot-tested. Change them only on purpose, with the snapshot.
 
 ## Using steward-authz
 
-<!-- If this project is consumed by others (a library/plugin/action), describe the contract a
-consumer must respect: the single entry point, the public surface, required options, and anything
-that must not be bypassed. Delete this section for a leaf application. -->
+- `Compile(chain)` / `Resolve` for the category rules (target category first, then ancestors);
+  `Acknowledgement` for the ungated acknowledge decision.
+- `Authorize` and `HasCapability` for one catalog permission.
+- `Entries()` goes into the service's go-apperr registry; errors match the `Err*` sentinels.
+- See `docs/access-model.md` and `docs/catalog.md`.
 
 ## Layout
 
-<!-- The directories that matter and what lives in each. Keep it short; point at the entry points. -->
-
-- `src/` - <what>
-- `<tests dir>/` - <what>
+- `catalog.go` - permissions, roles, the role matrix
+- `authorize.go` - `Subject`, `Resource`, `Authorize`, `HasCapability`
+- `rules.go`, `resolve.go` - category rules and the rule engine
+- `errors.go` - codes and go-apperr entries
+- `policies/` - Rego v1 packages and their tests
+- `scripts/publish-bundle.sh` - bundle upload, with `publish-bundle_test.sh`
 
 ## Build, test, lint
 
-<!-- The exact commands. Pull these from package.json scripts (npm), the Taskfile (Go/Task), or
-pyproject (Python) so they stay accurate. -->
-
-- Build: `<command>`
-- Test: `<command>` (note any service/fixture the integration tests require)
-- Lint: `<command>`
-- Package checks (npm packages), after a build: `npm run check:pack` (contents and ceiling),
-  `npm run check:pack:growth` (growth against the last release), `npm run check:install`
-  (install the tarball, import ESM and CJS); see CLAUDE.md "npm package contents"
-- License headers / docs: `<command>`
+- Build: `task build`
+- Test: `task test`; Rego: `task rego:test` (needs OPA 1.x)
+- Lint: `task lint`
+- License headers: `task license`
+- Until go-apperr v1.2.0 is released, build through a git-ignored `go.work` that uses its branch
+  checkout (and `apperrgrpc/`); never a `replace` directive or a pseudo-version.
 
 ## Logging
 
@@ -56,4 +58,6 @@ Follow the logging rules in `CLAUDE.md`. In short:
   `.claude/hooks` (run `bash .claude/hooks/install.sh` once per clone).
 - Open every PR as a draft. CI skips drafts, so run the full checks locally, push once they pass,
   and mark the PR ready when the work is finished; see CLAUDE.md "CI and Actions minutes".
-- <project-specific conventions, non-obvious constraints, and traps an agent should know>
+- The library logs nothing itself; `WithLogger` hands go-authz a `log/slog` logger for debug
+  decision lines.
+- Rego method names follow each service's proto package; keep them in step with the services.
