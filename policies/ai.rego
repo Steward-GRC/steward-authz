@@ -1,75 +1,92 @@
 # AI service authorization.
 #
-# The hard rule here is the authorized_group_ids enforcement: the AI
-# service trusts the gateway to have computed the set of groups the
-# caller has at least Viewer on, and OPA enforces that:
-#   (a) the caller's claims.groups is a SUPERSET of authorized_group_ids,
-#       i.e. every group_id in authorized_group_ids must be in
-#       claims.groups; the gateway cannot widen the set.
-#   (b) include_sensitive=true requires the individual read-sensitive
-#       grant; no role reads sensitive content across policies.
+# The gateway is the AI service's only caller. It sends the signed-in person
+# as the actor (no user id in the request) and binds the read scope from
+# their access: request.scope holds the category ids they may read,
+# include_sensitive and all_categories. Which categories a person may read
+# comes from the category rules, which this input doesn't carry, so the
+# gateway computes the ids; this policy checks the two flags that widen a
+# scope past them:
+#   (a) include_sensitive needs the individual read-sensitive grant; no role
+#       reads sensitive content across policies;
+#   (b) all_categories needs the site admin role.
 package steward.ai # scrub:allow=fqdn
 
 import data.steward.common
 
 default allow := false
 
-# ---- SearchAndAnswer ---------------------------------------------------
+method(rpc) := sprintf("steward.ai.v1.AiService/%s", [rpc])
 
-# All authorized_group_ids must be present in the caller's claims.groups.
-# Implementation: there exists no element of authorized_group_ids that is
-# NOT in claims.groups.
-authorized_groups_subset_of_claims if {
-	not authorized_group_outside_claims
+read_calls := {method("SearchAndAnswer"), method("GetRelatedPolicies"), method("GetTopQuestions")}
+
+status_calls := {method("GetAIEnabled"), method("GetProviderStatus"), method("GetPolicySummary"), method("GetAIJob")}
+
+settings_calls := {
+	method("SetAIEnabled"), method("GetAIConfig"), method("SetProviderConfig"),
+	method("SetProviderCredential"), method("TestProvider"), method("AcceptDataNotice"),
+	method("SetMonthlyLimit"), method("GetUsage"), method("SetOrgContext"),
+	method("SetAIRetrievalConfig"), method("SetUserAiQueryLimit"),
 }
 
-authorized_group_outside_claims if {
-	some i
-	gid := input.request.authorized_group_ids[i]
-	not group_in_claims(gid)
+# The operations a person submits to author content. QA follows the read
+# rules; RELATED_REEVAL and RELATIONSHIP_LEARN are started by the service.
+authoring_operations := {
+	"JOB_OPERATION_DRAFT", "JOB_OPERATION_REWRITE", "JOB_OPERATION_CLARIFY",
+	"JOB_OPERATION_SUMMARIZE", "JOB_OPERATION_REVIEW", "JOB_OPERATION_REVISE",
+	"JOB_OPERATION_SUGGEST_ENRICHMENTS",
 }
 
-group_in_claims(gid) if {
-	some j
-	input.claims.groups[j] == gid
+# scope_allowed holds when the request's scope widens nothing the caller
+# doesn't hold. A request with no scope reads nothing past its categories.
+scope_allowed if {
+	not widens_sensitive
+	not widens_all
 }
 
-# Base allow: authenticated caller, requester field matches user_id, the
-# authorized_group_ids the caller submitted are all groups they actually
-# belong to, and (when sensitive content is included) they hold the
-# individual read-sensitive grant. The AI service still filters each
-# sensitive document to its assigned authors and approvers.
+widens_sensitive if {
+	input.request.scope.include_sensitive == true
+	not common.has_sensitive_grant(input.claims)
+}
+
+widens_all if {
+	input.request.scope.all_categories == true
+	not common.is_site_admin(input.claims)
+}
+
 allow if {
-	input.method == "steward.ai.v1.AiService/SearchAndAnswer"
+	input.method in read_calls
 	common.has_user_id(input.claims)
-	input.claims.user_id == input.request.actor_user_id
-	authorized_groups_subset_of_claims
-	not_sensitive_request
+	scope_allowed
 }
 
 allow if {
-	input.method == "steward.ai.v1.AiService/SearchAndAnswer"
+	input.method == method("AuthoringAssist")
 	common.has_user_id(input.claims)
-	input.claims.user_id == input.request.actor_user_id
-	authorized_groups_subset_of_claims
-	input.request.include_sensitive == true
-	common.has_sensitive_grant(input.claims)
-}
-
-not_sensitive_request if {
-	input.request.include_sensitive == false
-}
-
-not_sensitive_request if {
-	not input.request.include_sensitive
-}
-
-# ---- AuthoringAssist ---------------------------------------------------
-
-# Authors editing a draft can use the assist; gateway binds actor_user_id.
-allow if {
-	input.method == "steward.ai.v1.AiService/AuthoringAssist"
-	common.has_user_id(input.claims)
-	input.claims.user_id == input.request.actor_user_id
 	common.is_author(input.claims)
+}
+
+allow if {
+	input.method == method("SubmitAIJob")
+	common.has_user_id(input.claims)
+	input.request.operation in authoring_operations
+	common.is_author(input.claims)
+}
+
+allow if {
+	input.method == method("SubmitAIJob")
+	common.has_user_id(input.claims)
+	input.request.operation == "JOB_OPERATION_QA"
+	scope_allowed
+}
+
+allow if {
+	input.method in status_calls
+	common.has_user_id(input.claims)
+}
+
+allow if {
+	input.method in settings_calls
+	common.has_user_id(input.claims)
+	common.is_site_admin(input.claims)
 }
