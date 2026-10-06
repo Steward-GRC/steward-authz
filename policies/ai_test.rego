@@ -1,168 +1,117 @@
 package steward.ai # scrub:allow=fqdn
 
-# ---- SearchAndAnswer ---------------------------------------------------
+m(rpc) := sprintf("steward.ai.v1.AiService/%s", [rpc])
 
-test_search_authorized_groups_subset_ok if {
+reader := {"user_id": "erin", "roles": [], "groups": ["All staff"]}
+
+sensitive_reader := {"user_id": "erin", "roles": [], "groups": ["All staff"], "read_sensitive": true}
+
+author := {"user_id": "bob", "roles": ["author"]}
+
+scoped_author := {"user_id": "bob", "roles": [], "scoped_roles": [{"role": "author", "category": "Finance"}]}
+
+site_admin := {"user_id": "alice", "roles": ["site-admin"]}
+
+scope(ids) := {"category_ids": ids, "include_sensitive": false, "all_categories": false}
+
+# ---- the read calls -----------------------------------------------------
+
+test_read_calls_allow_a_signed_in_reader if {
+	every rpc in ["SearchAndAnswer", "GetRelatedPolicies", "GetTopQuestions"] {
+		allow with input as {"method": m(rpc), "claims": reader, "request": {"scope": scope(["cat-finance"])}}
+	}
+}
+
+test_read_calls_allow_an_empty_scope if {
+	allow with input as {"method": m("SearchAndAnswer"), "claims": reader, "request": {"question": "q"}}
+}
+
+test_read_calls_need_a_signed_in_caller if {
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": {"roles": []}, "request": {"scope": scope([])}}
+}
+
+test_sensitive_scope_needs_the_read_sensitive_grant if {
+	req := {"scope": {"category_ids": ["cat-finance"], "include_sensitive": true}}
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": reader, "request": req}
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": author, "request": req}
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": site_admin, "request": req}
+	not allow with input as {"method": m("GetRelatedPolicies"), "claims": reader, "request": req}
+	allow with input as {"method": m("SearchAndAnswer"), "claims": sensitive_reader, "request": req}
+}
+
+test_all_categories_scope_needs_a_site_admin if {
+	req := {"scope": {"all_categories": true}}
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": reader, "request": req}
+	not allow with input as {"method": m("GetTopQuestions"), "claims": sensitive_reader, "request": req}
+	allow with input as {"method": m("SearchAndAnswer"), "claims": site_admin, "request": req}
+}
+
+test_all_categories_with_sensitive_needs_both if {
+	req := {"scope": {"all_categories": true, "include_sensitive": true}}
+	not allow with input as {"method": m("SearchAndAnswer"), "claims": site_admin, "request": req}
 	allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["reader"], "groups": ["g1", "g2", "g3"]},
-		"request": {
-			"question": "what",
-			"actor_user_id": "u1",
-			"group_id": "g1",
-			"authorized_group_ids": ["g1", "g2"],
-			"include_sensitive": false,
-		},
+		"method": m("SearchAndAnswer"),
+		"claims": object.union(site_admin, {"read_sensitive": true}),
+		"request": req,
 	}
 }
 
-test_search_denied_when_authorized_widens_beyond_claims if {
-	# Caller is only in g1, but submitted g1+g2 — escalation attempt.
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["reader"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1", "g2"],
-			"include_sensitive": false,
-		},
+# ---- authoring ----------------------------------------------------------
+
+test_assist_needs_an_author_grant if {
+	allow with input as {"method": m("AuthoringAssist"), "claims": author, "request": {"policy_id": "p1"}}
+	allow with input as {"method": m("AuthoringAssist"), "claims": scoped_author, "request": {"policy_id": "p1"}}
+	not allow with input as {"method": m("AuthoringAssist"), "claims": reader, "request": {"policy_id": "p1"}}
+}
+
+test_authoring_jobs_need_an_author_grant if {
+	every op in ["JOB_OPERATION_DRAFT", "JOB_OPERATION_REVISE", "JOB_OPERATION_REVIEW", "JOB_OPERATION_SUGGEST_ENRICHMENTS", "JOB_OPERATION_SUMMARIZE"] {
+		allow with input as {"method": m("SubmitAIJob"), "claims": scoped_author, "request": {"operation": op}}
+		not allow with input as {"method": m("SubmitAIJob"), "claims": reader, "request": {"operation": op}}
 	}
 }
 
-test_search_denied_actor_mismatch if {
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["reader"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u2",
-			"authorized_group_ids": ["g1"],
-		},
+test_qa_job_follows_the_read_rules if {
+	allow with input as {"method": m("SubmitAIJob"), "claims": reader, "request": {"operation": "JOB_OPERATION_QA", "scope": scope(["cat-finance"])}}
+	not allow with input as {"method": m("SubmitAIJob"), "claims": reader, "request": {"operation": "JOB_OPERATION_QA", "scope": {"include_sensitive": true}}}
+}
+
+test_service_started_jobs_are_refused if {
+	every op in ["JOB_OPERATION_RELATED_REEVAL", "JOB_OPERATION_RELATIONSHIP_LEARN", "JOB_OPERATION_UNSPECIFIED"] {
+		not allow with input as {"method": m("SubmitAIJob"), "claims": site_admin, "request": {"operation": op}}
+	}
+	not allow with input as {"method": m("SubmitAIJob"), "claims": site_admin, "request": {}}
+}
+
+# ---- the module's settings ---------------------------------------------
+
+settings_rpcs := [
+	"SetAIEnabled", "GetAIConfig", "SetProviderConfig", "SetProviderCredential", "TestProvider",
+	"AcceptDataNotice", "SetMonthlyLimit", "GetUsage", "SetOrgContext", "SetAIRetrievalConfig",
+	"SetUserAiQueryLimit",
+]
+
+test_settings_need_a_site_admin if {
+	every rpc in settings_rpcs {
+		allow with input as {"method": m(rpc), "claims": site_admin, "request": {}}
+		not allow with input as {"method": m(rpc), "claims": author, "request": {}}
+		not allow with input as {"method": m(rpc), "claims": {"user_id": "grace", "roles": ["compliance-admin"]}, "request": {}}
 	}
 }
 
-test_search_sensitive_requires_sensitive_role if {
-	# Plain reader requesting sensitive content -> denied.
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["reader"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
+test_admin_role_grants_nothing if {
+	not allow with input as {"method": m("SetAIEnabled"), "claims": {"user_id": "ops", "roles": ["admin"]}, "request": {}}
 }
 
-test_search_sensitive_author_role_denied if {
-	# No role reads sensitive content across policies.
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["author"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
-}
+# ---- status reads -------------------------------------------------------
 
-test_search_sensitive_denied_empty_roles if {
-	# No grant — a plain reader (empty roles) must be denied.
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": [], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
-}
-
-test_search_admin_role_denied if {
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "ops", "roles": ["admin"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "ops",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
-}
-
-test_search_empty_authorized_group_ids_is_fine if {
-	# Cross-group search with no narrowing — vacuously subset-of-claims.
-	allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "groups": []},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": [],
-			"include_sensitive": false,
-		},
-	}
-}
-
-# ---- AuthoringAssist ---------------------------------------------------
-
-test_authoring_assist_author_self if {
-	allow with input as {
-		"method": "steward.ai.v1.AiService/AuthoringAssist",
-		"claims": {"user_id": "u1", "roles": ["author"]},
-		"request": {"actor_user_id": "u1", "policy_id": "p1"},
-	}
-}
-
-test_authoring_assist_scoped_author_self if {
-	# Scoped-only author (no global role) must be authorized.
-	allow with input as {
-		"method": "steward.ai.v1.AiService/AuthoringAssist",
-		"claims": {
-			"user_id": "u1",
-			"roles": [],
-			"scoped_roles": [{"role": "author", "category": "Information"}],
-		},
-		"request": {"actor_user_id": "u1", "policy_id": "p1"},
-	}
-}
-
-test_authoring_assist_reader_denied if {
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/AuthoringAssist",
-		"claims": {"user_id": "u1", "roles": ["reader"]},
-		"request": {"actor_user_id": "u1"},
+test_status_reads_allow_a_signed_in_caller if {
+	every rpc in ["GetAIEnabled", "GetProviderStatus", "GetPolicySummary", "GetAIJob"] {
+		allow with input as {"method": m(rpc), "claims": reader, "request": {}}
+		not allow with input as {"method": m(rpc), "claims": {}, "request": {}}
 	}
 }
 
 test_unknown_method_denied if {
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/NotARpc",
-		"claims": {"user_id": "ops", "roles": ["admin"]},
-		"request": {},
-	}
-}
-
-test_search_sensitive_allowed_with_explicit_grant if {
-	allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": [], "groups": ["g1"], "read_sensitive": true},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
-}
-
-test_search_sensitive_compliance_admin_denied if {
-	not allow with input as {
-		"method": "steward.ai.v1.AiService/SearchAndAnswer",
-		"claims": {"user_id": "u1", "roles": ["compliance-admin"], "groups": ["g1"]},
-		"request": {
-			"actor_user_id": "u1",
-			"authorized_group_ids": ["g1"],
-			"include_sensitive": true,
-		},
-	}
+	not allow with input as {"method": m("NotARpc"), "claims": site_admin, "request": {}}
 }

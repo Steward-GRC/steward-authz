@@ -49,6 +49,11 @@ Query `data.steward.<svc>.allow`; anything but `true` is a denial.
   (`claims.read_sensitive`) or a grant on that policy (`claims.sensitive_grants`, policy IDs). No
   role passes it. Across policies (an AI search with `include_sensitive`), only the individual
   grant counts.
+- **AI read scope:** the AI service's calls carry a `scope` of category ids the gateway computed
+  from the category rules (the input doesn't hold the rules, so the ids aren't checked here).
+  The AI package refuses only a scope that widens past the caller: `include_sensitive` without the
+  individual grant, or `all_categories` without the site admin role. The module's settings calls
+  need the site admin role; assist and authoring jobs need an author grant.
 
 ## Test and build
 
