@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build the OPA bundle a service's image copies in.
+# Build the OPA bundle from policies/ (no service image includes it today).
 #
 #   scripts/build-bundle.sh [output]   (default: bundle.tar.gz)
 #

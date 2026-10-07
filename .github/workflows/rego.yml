@@ -1,7 +1,7 @@
 name: rego
 # The Rego bundles this repo owns: format, strict compile, unit tests, and the
-# bundle build each service's image runs. There is no bundle store and no
-# publish step: services build the bundle into their images.
+# bundle build. There is no bundle store and no publish step, and no service
+# loads the bundle today (see docs/rego-bundles.md).
 on:
   pull_request:
     branches:
