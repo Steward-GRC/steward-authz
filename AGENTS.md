@@ -27,7 +27,7 @@ imported by every service that decides access in-process, plus the Rego bundles 
 - `rules.go`, `resolve.go` - category rules and the rule engine
 - `errors.go` - codes and go-apperr entries
 - `policies/` - Rego v1 packages and their tests
-- `scripts/build-bundle.sh` - the reproducible bundle build service images run, with its test
+- `scripts/build-bundle.sh` - the reproducible bundle build, with its test (no service image runs it today)
 
 ## Build, test, lint
 

@@ -2,8 +2,16 @@
 
 `policies/` holds one Rego package per service, `steward.<svc>`, each with a single `allow` rule
 and `default allow := false`, plus the shared helpers in `steward.common`. The rules are Rego v1
-and need OPA 1.x. They gate each gRPC method coarsely; the per-document decision is the in-process
-engine's job (see [the access model](access-model.md)).
+and need OPA 1.x. They describe a coarse gate on each gRPC method.
+
+## Status: not enforced
+
+No Steward service loads a Rego bundle today. No service image builds or copies one, no service
+depends on OPA, and nothing queries `data.steward.<svc>.allow`. Access is enforced by this module's
+Go engine, which the services call in-process (see [the access model](access-model.md)). The
+method gates below are therefore enforced nowhere: a rule here that is stricter than the Go engine
+doesn't stop a call. The packages are kept, tested and buildable, but treat them as a
+specification, not as a layer of the access model.
 
 | File | Package | Covers |
 |---|---|---|
@@ -63,57 +71,5 @@ task rego:bundle  # scripts/build-bundle.sh: bundle.tar.gz, without the *_test.r
 opa eval --bundle policies/ --input input.json 'data.steward.core.allow'
 ```
 
-CI runs the same checks in `.github/workflows/rego.yml`.
-
-## Building the bundle into a service image
-
-There is no bundle store and nothing publishes bundles. Each service builds the bundle into its own
-image at build time, from the steward-authz commit it pins, so the Go engine and the Rego rules in
-one image always come from the same commit.
-
-`scripts/build-bundle.sh [output]` runs `opa build` over `policies/` without the tests, with the
-bundle rooted at `steward` (`policies/.manifest`) and the manifest revision set from
-`BUNDLE_REVISION` (default: the checked-out commit). The same commit and OPA version build the same
-bytes; the script's test checks that. Use OPA 1.21.1, the version CI pins.
-
-### In a service's Dockerfile
-
-```dockerfile
-# syntax=docker/dockerfile:1
-ARG STEWARD_AUTHZ_REF  # the steward-authz commit the service pins (the one its go.mod resolves to)
-
-FROM openpolicyagent/opa:1.21.1-debug AS authz-bundle
-ARG STEWARD_AUTHZ_REF
-ADD --keep-git-dir=false https://github.com/Steward-GRC/steward-authz.git#${STEWARD_AUTHZ_REF} /src
-RUN BUNDLE_REVISION="${STEWARD_AUTHZ_REF}" sh /src/scripts/build-bundle.sh /out/bundle.tar.gz
-
-FROM <the service's runtime stage>
-COPY --from=authz-bundle /out/bundle.tar.gz /opt/steward/authz/bundle.tar.gz
-```
-
-The `-debug` OPA image carries the shell the script needs; the runtime stage needs only the copied
-file.
-
-### Loading it
-
-**In-process**, with OPA's Go module:
-
-```go
-import "github.com/open-policy-agent/opa/v1/rego"
-
-pq, err := rego.New(
-	rego.Query("data.steward.core.allow"),
-	rego.LoadBundle("/opt/steward/authz/bundle.tar.gz"),
-).PrepareForEval(ctx)
-// rs, err := pq.Eval(ctx, rego.EvalInput(input)); allowed := rs.Allowed()
-```
-
-**As a sidecar**, the bundle comes from the service image through a shared volume: an init
-container from the service image copies `/opt/steward/authz/bundle.tar.gz` into an `emptyDir`, and
-the OPA container serves it from there, with no bundle service and no polling:
-
-```bash
-opa run --server --addr=127.0.0.1:8181 /bundles/bundle.tar.gz
-```
-
-A new policy version ships as a new service image.
+CI runs the same checks in `.github/workflows/rego.yml`. Nothing publishes the bundle, and no
+service image includes it.
