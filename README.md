@@ -36,6 +36,9 @@ if err := d.Err(); err != nil { return err } // coded AUTHZ_DENIED
 - [The permission catalog](docs/catalog.md): permissions, roles, error codes.
 - [The Rego bundles](docs/rego-bundles.md): the input shape, testing, and building the bundle into a service image.
 
+- [Contributing](https://github.com/Steward-GRC/.github/blob/main/.github/CONTRIBUTING.md) and
+  [security](https://github.com/Steward-GRC/.github/blob/main/.github/SECURITY.md)
+
 ## 🛠 Develop
 
 ```bash
