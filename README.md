@@ -47,6 +47,10 @@ task rego:test   # opa fmt, opa check, opa test, and the bundle build's tests
 task rego:bundle # build bundle.tar.gz from policies/ (scripts/build-bundle.sh)
 ```
 
+## 🙏 Acknowledgements
+
+Steward was originally written by [@Bugs5382](https://github.com/Bugs5382).
+
 ## ⚖️ License
 
 Apache-2.0 (c) 2026 The Steward Authors
